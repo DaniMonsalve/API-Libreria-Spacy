@@ -1,0 +1,223 @@
+###############   LIBRERIAS   ################
+import tweepy
+import csv
+import pandas as pd
+import numpy as np
+import calendar
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from wordcloud import WordCloud, STOPWORDS
+import re
+import spacy
+import matplotlib.pyplot as plt
+import es_core_news_sm
+
+####################################
+
+
+##########################  CLAVES PARA UTILIZAR LA API #########################
+
+API_key = consumer_key='XXXXXXXXXXXX'
+API_key_Secret =consumer_secret= 'XXXXXXXXXXXX'
+BEARER_TOKEN = 'XXXXXXXXXXXXXXXXXXX'
+access_token='XXXXXXXXXXXXXX'
+access_token_secret='XXXXXXXXXXXXXXXXX'
+
+################  DESCARGO LOS TWEETS DE UN USUARIO EN CSV  ############
+
+def get_all_tweets(screen_name):
+    #Se puede acceder a un máximo de 3240 tweets.
+    
+    #utilizo tweepy
+    auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
+    auth.set_access_token(access_token, access_token_secret)
+    api = tweepy.API(auth)
+    
+    #lista para almacenar el contenido de los tweets
+    alltweets = []  
+    
+    #primera request (200 es el máximo)
+    new_tweets = api.user_timeline(screen_name = screen_name,count=200)
+    
+    #Existe un error si la cuenta de twitter tine menos de 200. Su solución sería la siguiente:
+    if len(alltweets) > 200:
+        oldest=alltweets[-1].id-1
+        while len(new_tweets)>0:
+            alltweets = []
+            oldest=0 
+            print("getting tweets before %s" %(oldest))
+            new_tweets = api.user_timeline(screen_name=screen_name,count=200,max_id=oldest)#
+            alltweets.extend(new_tweets)
+            oldest=alltweets[-1].id-1
+            print("...%s tweets downloaded so far" % (len(alltweets)))
+        outtweets = [[tweet.id_str, tweet.created_at, tweet.text.encode("utf-8")] for tweet in alltweets]
+    elif len(alltweets) > 1: # less than or eq to 200 tweets
+        oldest=alltweets[-1].id-1
+        outtweets = [[tweet.id_str, tweet.created_at, tweet.text.encode("utf-8")] for tweet in alltweets]
+    else: # for 0-1 tweets
+        oldest=0
+        if len(alltweets) > 0: # for 1 tweet user
+            outtweets = [[tweet.id_str, tweet.created_at, tweet.text.encode("utf-8")] for tweet in alltweets]
+        else: # for no tweet users
+            outtweets=[]
+    
+    #guardo la primera request en mi lista creada anteriormente
+    alltweets.extend(new_tweets)
+    
+    #guardo el ID del último tweet descargado.
+    oldest = alltweets[-1].id - 1
+    
+    #continuo haciendo requests hasta que no quedan tweets
+    while len(new_tweets) > 0:
+        print(f"getting tweets before {oldest}")
+        
+        #se utiliza el parametro max_id para prevenir duplicados
+        new_tweets = api.user_timeline(screen_name = screen_name,count=200,max_id=oldest)
+        
+        #copio los tweets de cada request
+        alltweets.extend(new_tweets)
+        
+        #actualizo el ID del último tweet
+        oldest = alltweets[-1].id - 1
+        
+        print(f"...{len(alltweets)} tweets downloaded so far")
+    
+    #para transformar los tweets de tweepy en una lista
+    outtweets = [[tweet.id_str, tweet.created_at, tweet.text] for tweet in alltweets]
+    
+    #genero el CSV  
+    with open(f'new_{screen_name}_tweets.csv', 'w',encoding="utf-8") as f:#############
+        writer = csv.writer(f)
+        writer.writerow(["id","created_at","text"])
+        writer.writerows(outtweets)
+    
+    pass
+
+
+if __name__ == '__main__':
+    #ID de la cuenta de twitter
+    get_all_tweets("nombre_usuario")
+    
+ #################################################
+
+#Cargo el archivo csv con los tweets y genero un dataframe
+df=pd.read_csv('XXXXX.csv')
+df
+
+#Añado la columna Mes para realizar el mismo análisis en cada mes
+
+df["Month"] = df["created_at"].str.extract('\-(\d{2})\-').astype(np.int)
+
+def month(x):
+    return calendar.month_name[int(x)] if not np.isnan(x) else np.nan
+
+df['Month'] = df.Month.apply(month)
+df
+
+nlp = spacy.load('es_core_news_sm',disable=['parser', 'ner'])
+
+# Lemmatization with stopwords removal
+df['lemmatized']=df['text'].apply(lambda x: ' '.join([token.lemma_ for token in list(nlp(x)) if (token.is_stop==False)]))
+
+
+df_G=df[['Month','lemmatized']].groupby(by='Month').agg(lambda x:' '.join(x))
+df_G.head()
+
+##############################
+
+#Limpio la totalidad del texto (tweets):
+
+texto = []
+
+for i in df['text']:
+    texto.append(i)
+str_texto = "".join(texto)
+#str_texto
+
+
+#Elimino emojis y símbolos
+def deEmojify(str_texto):
+    regrex_pattern = re.compile(pattern ="["
+        u"\U0001F600-\U0001F64F"  # emoticons
+        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+        u"\U0001F680-\U0001F6FF"  # transport & map symbols
+        u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+        u"\U00002500-\U00002BEF"  # chinese char
+        u"\U00002702-\U000027B0"
+        u"\U00002702-\U000027B0"
+        u"\U000024C2-\U0001F251"
+        u"\U0001f926-\U0001f937"
+        u"\U00010000-\U0010ffff"
+        u"\u2640-\u2642" 
+        u"\u2600-\u2B55"
+        u"\u200d"
+        u"\u23cf"
+        u"\u23e9"
+        u"\u231a"
+        u"\ufe0f"  # dingbats
+        u"\u3030"
+                      "]+", flags = re.UNICODE)
+    return regrex_pattern.sub(r'',str_texto)
+str_texto=deEmojify(str_texto)
+
+
+#Elimino urls
+pattern = re.compile(r'(https?://)?(www\.)?(\w+\.)?(\w+)(\.\w+)(/.+)?')
+str_texto = re.sub(pattern,'',str_texto)
+
+#Elimino palabras de menos de 4 letras para quitarme algunos pronombres y determinantes
+str_texto=re.sub(r'\b\w{1,3}\b', '', str_texto)
+
+###############
+nlp = spacy.load("es_core_news_sm")
+doc = nlp(str_texto)
+
+############### SELECCIONO ÚNICAMENTE LOS SUSTANTIVOS UTILIZADOS  ###############
+nombres=[doc.text for doc in nlp(str_texto) if doc.is_stop!=True and doc.is_punct!=True and doc.pos_=='NOUN']
+str_nombres=" ".join(nombres)
+print(str_nombres)
+
+#Muestro las veces que se repiten las palabras seleccionadas
+frecuencias=nltk.FreqDist(nombres)
+frecuencias
+
+#Genero un gráfico Word Cloud solo con Nombres.
+
+stopwords = set(STOPWORDS)
+
+wordcloud = WordCloud(width=3000, stopwords=stopwords,height=2000,max_font_size=200,collocations=False, background_color='black').generate(str_nombres)
+plt.figure(figsize=(40,30))
+plt.imshow(wordcloud, interpolation="bilinear")
+plt.axis("off")
+plt.show()
+
+################### LO MISMO CON ADJETIVOS  ############
+#Selecciono los adjetivos seleccionados
+adj=[doc.text for doc in nlp(str_texto) if doc.is_stop!=True and doc.is_punct!=True and doc.pos_=='ADJ']
+
+str_adj=" ".join(adj)
+print(str_adj)
+
+#Genero un gráfico Word Cloud solo con Adjetivos.
+
+stopwords = set(STOPWORDS)
+
+wordcloud = WordCloud(width=3000, stopwords=stopwords,height=2000,max_font_size=200,collocations=False, background_color='black').generate(str_adj)
+plt.figure(figsize=(40,30))
+plt.imshow(wordcloud, interpolation="bilinear")
+plt.axis("off")
+plt.show()
+
+########################MISMO PROCEDIMIENTO CON LA TOTALIDAD DE LAS PALABRAS  ####################
+
+#Decido que palabras no quiero que aparezcan
+
+stopwords = set(STOPWORDS)
+stopwords.update(["pues","casi","ahora","hace","esto", "como","hacer","tiene","hace"]) #Palabras que no quiero que aparezcan
+
+wordcloud = WordCloud(width=3000, stopwords=stopwords,height=2000,max_font_size=200,collocations=False, background_color='black').generate(str_texto)
+plt.figure(figsize=(40,30))
+plt.imshow(wordcloud, interpolation="bilinear")
+plt.axis("off")
+plt.show()
