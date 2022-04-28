@@ -24,7 +24,7 @@ nlp=spacy.load('es_core_news_sm')
 #######################################
 #Cargo el archivo csv con los tweets y genero un dataframe
 
-df=pd.read_csv('new_MisterGafan_tweets.csv')
+df=pd.read_csv('XXXXXX.csv')
 
 #Copio el contenido de los tweets en una lista y lo transformo en una cadena de texto
 texto = []
