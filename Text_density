@@ -1,0 +1,115 @@
+############# LIBRERIAS ###############
+import pandas as pd
+import numpy as np
+import calendar
+
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+from nltk.probability import FreqDist
+
+from wordcloud import WordCloud, STOPWORDS
+import re
+
+import spacy
+import matplotlib.pyplot as plt
+import es_core_news_sm
+
+import urllib.request
+from bs4 import BeautifulSoup
+#######################################
+#En teoría no es necesario, pero especifico el idioma por si acaso
+
+nlp=spacy.load('es_core_news_sm')
+#######################################
+#Cargo el archivo csv con los tweets y genero un dataframe
+
+df=pd.read_csv('new_MisterGafan_tweets.csv')
+
+#Copio el contenido de los tweets en una lista y lo transformo en una cadena de texto
+texto = []
+
+for i in df['text']:
+    texto.append(i)
+str_texto = "".join(texto)
+
+#Elimino emojis y símbolos
+def Emojify(str_texto):
+    regrex_pattern = re.compile(pattern ="["
+        u"\U0001F600-\U0001F64F"  # emoticons
+        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+        u"\U0001F680-\U0001F6FF"  # transport & map symbols
+        u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+        u"\U00002500-\U00002BEF"  # chinese char
+        u"\U00002702-\U000027B0"
+        u"\U00002702-\U000027B0"
+        u"\U000024C2-\U0001F251"
+        u"\U0001f926-\U0001f937"
+        u"\U00010000-\U0010ffff"
+        u"\u2640-\u2642" 
+        u"\u2600-\u2B55"
+        u"\u200d"
+        u"\u23cf"
+        u"\u23e9"
+        u"\u231a"
+        u"\ufe0f"  # dingbats
+        u"\u3030"
+                      "]+", flags = re.UNICODE)
+    return regrex_pattern.sub(r'',str_texto)
+    
+    str_texto=Emojify(str_texto)
+    
+    #Elimino urls
+pattern = re.compile(r'(https?://)?(www\.)?(\w+\.)?(\w+)(\.\w+)(/.+)?')
+str_texto = re.sub(pattern,'',str_texto)
+
+#Los pronobres y determinantes no me interesan, luego me quedo únicamente con los nombres
+
+nombres=[doc.text for doc in nlp(str_texto) if doc.is_stop!=True and doc.is_punct!=True and doc.pos_=='NOUN']
+
+str_nombres=" ".join(nombres)
+print(str_nombres)
+
+#Función para extraer los tokens:
+
+def gen_tokens(_texto):
+    tokens=word_tokenize(_texto,"spanish")
+    tokens=[word.lower() for word in tokens if word.isalpha()]
+    
+    clean_tokens=tokens[:]
+    
+    for tok in tokens:
+        if tok in stopwords.words('spanish'):
+            clean_tokens.remove(tok)
+        
+    lem_tokens = []
+    separator=' '
+    
+    for tok in nlp(separator.join(clean_tokens)):
+        lem_tokens.append(tok.lemma_)
+        
+    return lem_tokens
+    
+    #creo una tabla igual a un dataframe:
+
+def text_density(_tokens):
+    tabla=pd.DataFrame(columns=['Palabra','Recuento','Densidad'])
+    
+    freq =nltk.FreqDist(_tokens)
+    palabras=len(_tokens)
+    
+    for key, val in freq.items():
+        densidad=val/palabras
+        row=pd.Series([key, val, densidad], index=tabla.columns)
+        tabla=tabla.append(row, ignore_index=True)
+        #tabla=pd.concat([tabla,row],ignore_index=False)
+        
+    return tabla.sort_values('Densidad',ascending=True)
+    
+tabla_densidad=text_density(gen_tokens(str_nombres))
+    
+    ########################################################
+    
+tabla_densidad.sort_values(by=['Densidad'], inplace=True, ascending=False)
+
+tabla_densidad
